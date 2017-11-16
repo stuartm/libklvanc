@@ -16,6 +16,10 @@ if test `uname -s` = "Darwin"
 then
 CFLAGS+=" -I/usr/local/include "
 LDFLAGS+=" -L/usr/local/lib "
+LIBS+=" -framework CoreFoundation"
+elif test `uname -s` = "Linux"
+then
+DECKLINK_DEF_LOC='$(top_builddir)/include/decklink-sdk'
 fi
 CFLAGS+=" -DKL_USERSPACE "
 
@@ -60,9 +64,6 @@ AC_TYPE_UINT8_T
 # Checks for library functions.
 AC_CHECK_FUNCS([memset strrchr])
 
-AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile])
-AC_OUTPUT
-
 # Add debug support
 AC_ARG_ENABLE(debug,
   AS_HELP_STRING(
@@ -78,3 +79,21 @@ AM_CONDITIONAL(DEBUG, test x"$debug" = x"true")
 AM_COND_IF(DEBUG,
     AC_DEFINE(DEBUG, 1, [Define to 0 if this is a release build]),
     AC_DEFINE(DEBUG, 0, [Define to 1 or higher if this is a debug build]))
+
+
+
+# Allow user to specify location of Decklink SDK
+AC_ARG_WITH(decklink-sdk,
+    AS_HELP_STRING([--with-decklink-sdk=STRING],
+         [Specify location of Decklink SDK headers]),[],[])
+AS_IF([test -n "${with_decklink_sdk}"],[
+     AC_SUBST(BLACKMAGIC_SDK_PATH,["${with_decklink_sdk}"])],
+     [AC_SUBST(BLACKMAGIC_SDK_PATH,["${DECKLINK_DEF_LOC}"])]
+)
+
+AS_IF([test -n "${BLACKMAGIC_SDK_PATH}"],,
+     [AC_MSG_ERROR([Blackmagic SDK location not specified and provided headers only work on Linux])]
+)
+
+AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile])
+AC_OUTPUT
