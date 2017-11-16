@@ -27,6 +27,25 @@
 #include "DeckLinkAPI.h"
 #include "ts_packetizer.h"
 
+/* Platform support macros for strings */
+#if defined(__APPLE__)
+static char *dup_cfstring_to_utf8(CFStringRef w)
+{
+    char s[256];
+    CFStringGetCString(w, s, 255, kCFStringEncodingUTF8);
+    return strdup(s);
+}
+#define DECKLINK_STR    const __CFString *
+#define DECKLINK_STRDUP dup_cfstring_to_utf8
+#define DECKLINK_FREE(s) CFRelease(s)
+#define DECKLINK_BOOL bool
+#else
+#define DECKLINK_STR    const char *
+#define DECKLINK_STRDUP strdup
+#define DECKLINK_FREE(s) free((void *) s)
+#define DECKLINK_BOOL bool
+#endif
+
 #define WIDE 80
 
 class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
@@ -830,11 +849,14 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			g_no_signal = 0;
 			const char *timecodeString = NULL;
 			if (g_timecodeFormat != 0) {
+				DECKLINK_STR timecode_decklinkstr;
 				IDeckLinkTimecode *timecode;
 				if (videoFrame->
 				    GetTimecode(g_timecodeFormat,
 						&timecode) == S_OK) {
-					timecode->GetString(&timecodeString);
+					timecode->GetString(&timecode_decklinkstr);
+					timecodeString = DECKLINK_STRDUP(timecode_decklinkstr);
+					DECKLINK_FREE(timecode_decklinkstr);
 				}
 			}
 
@@ -1197,11 +1219,13 @@ static void listDisplayModes()
 	while (displayModeIterator->Next(&displayMode) == S_OK) {
 
 		char *displayModeString = NULL;
-		HRESULT result = displayMode->GetName((const char **)&displayModeString);
+		DECKLINK_STR displayMode_decklinkstr;
+		HRESULT result = displayMode->GetName(&displayMode_decklinkstr);
 		if (result == S_OK) {
 			BMDTimeValue frameRateDuration, frameRateScale;
 			displayMode->GetFrameRate(&frameRateDuration, &frameRateScale);
-
+			displayModeString = DECKLINK_STRDUP(displayMode_decklinkstr);
+			DECKLINK_FREE(displayMode_decklinkstr);
 			fprintf(stderr, "        %2d:  %-20s \t %li x %li \t %g FPS [0x%08x]\n",
 				displayModeCount, displayModeString,
 				displayMode->GetWidth(),
@@ -1492,7 +1516,10 @@ static int _main(int argc, char *argv[])
 			foundDisplayMode = true;
 
 			const char *displayModeName;
-			displayMode->GetName(&displayModeName);
+			DECKLINK_STR displayModeName_decklinkstr;
+			displayMode->GetName(&displayModeName_decklinkstr);
+			displayModeName = DECKLINK_STRDUP(displayModeName_decklinkstr);
+			DECKLINK_FREE(displayModeName_decklinkstr);
 			selectedDisplayMode = displayMode->GetDisplayMode();
 			g_detected_mode_id = displayMode->GetDisplayMode();
 			g_requested_mode_id = displayMode->GetDisplayMode();
