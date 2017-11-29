@@ -843,40 +843,9 @@ void klvanc_free_SCTE_104(struct klvanc_packet_scte_104_s *pkt)
 	free(pkt);
 }
 
-int parse_SCTE_104(struct klvanc_context_s *ctx,
-		   struct klvanc_packet_header_s *hdr, void **pp)
+int klvanc_parse_SCTE_104_from_payload(struct klvanc_context_s *ctx,
+                                       struct klvanc_packet_scte_104_s *pkt)
 {
-	if (ctx->verbose)
-		PRINT_DEBUG("%s()\n", __func__);
-
-	struct klvanc_packet_scte_104_s *pkt = calloc(1, sizeof(*pkt));
-	if (!pkt)
-		return -ENOMEM;
-
-	memcpy(&pkt->hdr, hdr, sizeof(*hdr));
-
-        pkt->payloadDescriptorByte = hdr->payload[0];
-        pkt->version               = (pkt->payloadDescriptorByte >> 3) & 0x03;
-        pkt->continued_pkt         = (pkt->payloadDescriptorByte >> 2) & 0x01;
-        pkt->following_pkt         = (pkt->payloadDescriptorByte >> 1) & 0x01;
-        pkt->duplicate_msg         = pkt->payloadDescriptorByte & 0x01;
-
-	/* We only support SCTE104 messages of type
-	 * single_operation_message() that are completely
-	 * self containined with a single VANC line, and
-	 * are not continuation messages.
-	 * Eg. payloadDescriptor value 0x08.
-	 */
-	if (pkt->payloadDescriptorByte != 0x08) {
-		free(pkt);
-		return -1;
-	}
-
-	/* First byte is the padloadDescriptor, the rest is the SCTE104 message...
-	 * up to 200 bytes in length item 5.3.3 page 7 */
-	for (int i = 0; i < 200; i++)
-		pkt->payload[i] = hdr->payload[1 + i];
-
 	struct klvanc_single_operation_message *m = &pkt->so_msg;
 	struct klvanc_multiple_operation_message *mom = &pkt->mo_msg;
 
@@ -887,113 +856,116 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 	 */
 	m->opID = pkt->payload[0] << 8 | pkt->payload[1];
 
-#ifdef SPLICE_REQUEST_SINGLE
-	if (m->opID == SO_INIT_REQUEST_DATA) {
-
-		/* TODO: Will we ever see a trigger in a SOM. Interal discussion says
-		 *       no. We'll leave this active for the time being, pending removal.
-		 */
-		m->messageSize      = pkt->payload[2] << 8 | pkt->payload[3];
-		m->result           = pkt->payload[4] << 8 | pkt->payload[5];
-		m->result_extension = pkt->payload[6] << 8 | pkt->payload[7];
-		m->protocol_version = pkt->payload[8];
-		m->AS_index         = pkt->payload[9];
-		m->message_number   = pkt->payload[10];
-		m->DPI_PID_index    = pkt->payload[11] << 8 | pkt->payload[12];
-
-		struct klvanc_splice_request_data *d = &pkt->sr_data;
-
-		d->splice_insert_type  = pkt->payload[13];
-		d->splice_event_id     = pkt->payload[14] << 24 |
-			pkt->payload[15] << 16 | pkt->payload[16] <<  8 | pkt->payload[17];
-		d->unique_program_id   = pkt->payload[18] << 8 | pkt->payload[19];
-		d->pre_roll_time       = pkt->payload[20] << 8 | pkt->payload[21];
-		d->brk_duration        = pkt->payload[22] << 8 | pkt->payload[23];
-		d->avail_num           = pkt->payload[24];
-		d->avails_expected     = pkt->payload[25];
-		d->auto_return_flag    = pkt->payload[26];
-
-		/* TODO: We only support spliceStart_immediate and spliceEnd_immediate */
-		switch (d->splice_insert_type) {
-		case SPLICESTART_IMMEDIATE:
-		case SPLICEEND_IMMEDIATE:
-			break;
-		default:
-			/* We don't support this splice command */
-			PRINT_ERR("%s() splice_insert_type 0x%x, error.\n", __func__, d->splice_insert_type);
-			free(pkt);
-			return -1;
-		}
-	} else
-#endif
-	if (m->opID == 0xFFFF /* Multiple Operation Message */) {
-		mom->rsvd                    = pkt->payload[0] << 8 | pkt->payload[1];
-		mom->messageSize             = pkt->payload[2] << 8 | pkt->payload[3];
-		mom->protocol_version        = pkt->payload[4];
-		mom->AS_index                = pkt->payload[5];
-		mom->message_number          = pkt->payload[6];
-		mom->DPI_PID_index           = pkt->payload[7] << 8 | pkt->payload[8];
-		mom->SCTE35_protocol_version = pkt->payload[9];
-
-		unsigned char *p = &pkt->payload[10];
-		p = parse_mom_timestamp(ctx, p, &mom->timestamp);
-		
-		mom->num_ops = *(p++);
-		mom->ops = calloc(mom->num_ops, sizeof(struct klvanc_multiple_operation_message_operation));
-		if (!mom->ops) {
-			PRINT_ERR("%s() unable to allocate momo ram, error.\n", __func__);
-			free(pkt);
-			return -1;
-		}
-
-		for (int i = 0; i < mom->num_ops; i++) {
-			struct klvanc_multiple_operation_message_operation *o = &mom->ops[i];
-			o->opID = *(p + 0) << 8 | *(p + 1);
-			o->data_length = *(p + 2) << 8 | *(p + 3);
-			o->data = malloc(o->data_length);
-			if (!o->data) {
-				PRINT_ERR("%s() Unable to allocate memory for mom op, error.\n", __func__);
-			} else {
-				memcpy(o->data, p + 4, o->data_length);
-			}
-			p += (4 + o->data_length);
-
-			if (o->opID == MO_SPLICE_REQUEST_DATA)
-				parse_splice_request_data(ctx, o->data, &o->sr_data);
-			else if (o->opID == MO_INSERT_DESCRIPTOR_REQUEST_DATA)
-				parse_descriptor_request_data(o->data, &o->descriptor_data,
-					o->data_length - 1);
-			else if (o->opID == MO_INSERT_AVAIL_DESCRIPTOR_REQUEST_DATA)
-				parse_avail_request_data(o->data,
-							 &o->avail_descriptor_data);
-			else if (o->opID == MO_INSERT_DTMF_REQUEST_DATA)
-				parse_dtmf_request_data(o->data, &o->dtmf_data);
-			else if (o->opID == MO_INSERT_SEGMENTATION_REQUEST_DATA)
-				parse_segmentation_request_data(o->data, &o->segmentation_data);
-			else if (o->opID == MO_PROPRIETARY_COMMAND_REQUEST_DATA)
-				parse_proprietary_command_request_data(o->data, &o->proprietary_data,
-								       o->data_length);
-			else if (o->opID == MO_INSERT_TIER_DATA)
-				parse_tier_data(o->data, &o->tier_data);
-			else if (o->opID == MO_INSERT_TIME_DESCRIPTOR)
-				parse_time_descriptor(o->data, &o->time_data);
-
-#if 0
-			PRINT_DEBUG("opID = 0x%04x [%s], length = 0x%04x : ", o->opID, mom_operationName(o->opID), o->data_length);
-			hexdump(ctx, o->data, o->data_length, 32, "");
-#endif
-		}
-
-		/* We'll parse this message but we'll only look for INIT_REQUEST_DATA
-		 * sub messages, and construct a splice_request_data message.
-		 * The rest of the message types will be ignored.
-		 */
-	}
-	else {
+	if (m->opID != 0xFFFF /* Multiple Operation Message */) {
 		PRINT_ERR("%s() Unsupported opID = %x, error.\n", __func__, m->opID);
 		free(pkt);
 		return -1;
 	}
+
+	mom->rsvd                    = pkt->payload[0] << 8 | pkt->payload[1];
+	mom->messageSize             = pkt->payload[2] << 8 | pkt->payload[3];
+	mom->protocol_version        = pkt->payload[4];
+	mom->AS_index                = pkt->payload[5];
+	mom->message_number          = pkt->payload[6];
+	mom->DPI_PID_index           = pkt->payload[7] << 8 | pkt->payload[8];
+	mom->SCTE35_protocol_version = pkt->payload[9];
+
+	unsigned char *p = &pkt->payload[10];
+	p = parse_mom_timestamp(ctx, p, &mom->timestamp);
+		
+	mom->num_ops = *(p++);
+	mom->ops = calloc(mom->num_ops, sizeof(struct klvanc_multiple_operation_message_operation));
+	if (!mom->ops) {
+		PRINT_ERR("%s() unable to allocate momo ram, error.\n", __func__);
+		free(pkt);
+		return -1;
+	}
+
+	for (int i = 0; i < mom->num_ops; i++) {
+		struct klvanc_multiple_operation_message_operation *o = &mom->ops[i];
+		o->opID = *(p + 0) << 8 | *(p + 1);
+		o->data_length = *(p + 2) << 8 | *(p + 3);
+		o->data = malloc(o->data_length);
+		if (!o->data) {
+			PRINT_ERR("%s() Unable to allocate memory for mom op, error.\n", __func__);
+		} else {
+			memcpy(o->data, p + 4, o->data_length);
+		}
+		p += (4 + o->data_length);
+
+		if (o->opID == MO_SPLICE_REQUEST_DATA)
+			parse_splice_request_data(ctx, o->data, &o->sr_data);
+		else if (o->opID == MO_INSERT_DESCRIPTOR_REQUEST_DATA)
+			parse_descriptor_request_data(o->data, &o->descriptor_data,
+						      o->data_length - 1);
+		else if (o->opID == MO_INSERT_AVAIL_DESCRIPTOR_REQUEST_DATA)
+			parse_avail_request_data(o->data,
+						 &o->avail_descriptor_data);
+		else if (o->opID == MO_INSERT_DTMF_REQUEST_DATA)
+			parse_dtmf_request_data(o->data, &o->dtmf_data);
+		else if (o->opID == MO_INSERT_SEGMENTATION_REQUEST_DATA)
+			parse_segmentation_request_data(o->data, &o->segmentation_data);
+		else if (o->opID == MO_PROPRIETARY_COMMAND_REQUEST_DATA)
+			parse_proprietary_command_request_data(o->data, &o->proprietary_data,
+							       o->data_length);
+		else if (o->opID == MO_INSERT_TIER_DATA)
+			parse_tier_data(o->data, &o->tier_data);
+		else if (o->opID == MO_INSERT_TIME_DESCRIPTOR)
+			parse_time_descriptor(o->data, &o->time_data);
+
+#if 1
+		PRINT_DEBUG("opID = 0x%04x [%s], length = 0x%04x : ", o->opID, mom_operationName(o->opID), o->data_length);
+		hexdump(ctx, o->data, o->data_length, 32, "");
+#endif
+	}
+
+	return 0;
+}
+
+int parse_SCTE_104(struct klvanc_context_s *ctx,
+		   struct klvanc_packet_header_s *hdr, void **pp)
+{
+	struct klvanc_packet_scte_104_s *pkt;
+	int ret;
+
+	if (ctx->verbose)
+		PRINT_DEBUG("%s()\n", __func__);
+
+	/* We only support SMPTE 2010 messages that are completely
+	 * self containined with a single VANC line, and are not continuation
+	 * messages. Eg. payloadDescriptor value 0x08.
+	 */
+
+	if ((hdr->payload[0] & 0xff) != 0x08) {
+		return -1;
+	}
+
+	ret = klvanc_alloc_SCTE_104(0xffff, &pkt);
+	if (ret != 0)
+		return ret;
+
+	memcpy(&pkt->hdr, hdr, sizeof(*hdr));
+
+	/* SMPTE 2010 related fields */
+        pkt->payloadDescriptorByte = hdr->payload[0];
+        pkt->version               = (pkt->payloadDescriptorByte >> 3) & 0x03;
+        pkt->continued_pkt         = (pkt->payloadDescriptorByte >> 2) & 0x01;
+        pkt->following_pkt         = (pkt->payloadDescriptorByte >> 1) & 0x01;
+        pkt->duplicate_msg         = pkt->payloadDescriptorByte & 0x01;
+
+	/* First byte is the payloadDescriptor, the rest is the SCTE104 message...
+	 * up to 200 bytes in length for SOM and 254 bytes for MOM.
+	 * See SMPTE 2010 Sec 5.3.3 page 7 */
+	pkt->payloadLengthBytes = hdr->payloadLengthWords - 1;
+	if (pkt->payloadLengthBytes > 254)
+		pkt->payloadLengthBytes = 254;
+
+	for (int i = 0; i < pkt->payloadLengthBytes; i++)
+		pkt->payload[i] = hdr->payload[1 + i];
+
+	ret = klvanc_parse_SCTE_104_from_payload(ctx, pkt);
+	if (ret != 0)
+		return ret;
 
 	if (ctx->callbacks && ctx->callbacks->scte_104)
 		ctx->callbacks->scte_104(ctx->callback_context, ctx, pkt);

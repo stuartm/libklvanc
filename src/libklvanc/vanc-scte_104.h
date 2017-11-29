@@ -323,6 +323,20 @@ int klvanc_dump_SCTE_104(struct klvanc_context_s *ctx, void *p);
 void klvanc_free_SCTE_104(struct klvanc_packet_scte_104_s *pkt);
 
 /**
+ * @brief	Parse a SCTE-104 packet into a klvanc_packet_scte_104_s structure\n
+ *          To use this function, fill out the pkt->payload field prior to invocation.  The\n
+ *          payload field will be parsed and used to deserialize the other pkt members.
+ * @param[in]	struct klvanc_context_s *ctx - an established klvanc context (created via klvanc_context_create())
+ * @param[in]	struct packet_scte_104_s *pkt - A SCTE-104 VANC entry.  The payload field should\n
+            be filled out with the 8-bit SCTE-104 packet content -- NOT the 16-bit VANC payload with ADF.
+ * @return        0 - Success
+ * @return      < 0 - Error
+ * @return      -ENOMEM - Not enough memory to satisfy request
+ */
+int klvanc_parse_SCTE_104_from_payload(struct klvanc_context_s *ctx,
+                                       struct klvanc_packet_scte_104_s *pkt);
+
+/**
  * @brief	Convert type struct packet_scte_104_s into a more traditional line of\n
  *              vanc words, so that we may push out as VANC data.
  *              On success, caller MUST free the resulting *words array.
