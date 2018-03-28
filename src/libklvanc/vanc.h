@@ -87,6 +87,11 @@ struct klvanc_packet_kl_u64le_counter_s;
 /**
  * @brief       TODO - Brief description goes here.
  */
+struct klvanc_packet_smpte_12_2_s;
+
+/**
+ * @brief       TODO - Brief description goes here.
+ */
 struct klvanc_callbacks_s
 {
 	int (*afd)(void *user_context, struct klvanc_context_s *, struct klvanc_packet_afd_s *);
@@ -95,6 +100,7 @@ struct klvanc_callbacks_s
 	int (*scte_104)(void *user_context, struct klvanc_context_s *, struct klvanc_packet_scte_104_s *);
 	int (*all)(void *user_context, struct klvanc_context_s *, struct klvanc_packet_header_s *);
 	int (*kl_i64le_counter)(void *user_context, struct klvanc_context_s *, struct klvanc_packet_kl_u64le_counter_s *);
+	int (*smpte_12_2)(void *user_context, struct klvanc_context_s *, struct klvanc_packet_smpte_12_2_s *);
 };
 
 struct klvanc_cache_s;
@@ -188,6 +194,7 @@ void klvanc_dump_words_console(struct klvanc_context_s *ctx, uint16_t *vanc, int
 #include <libklvanc/vanc-eia_708b.h>
 #include <libklvanc/vanc-eia_608.h>
 #include <libklvanc/vanc-scte_104.h>
+#include <libklvanc/vanc-smpte_12_2.h>
 #include <libklvanc/did.h>
 #include <libklvanc/pixels.h>
 #include <libklvanc/vanc-checksum.h>

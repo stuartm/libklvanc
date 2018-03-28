@@ -246,6 +246,16 @@ static int cb_SCTE_104(void *callback_context, struct klvanc_context_s *ctx,
 	return 0;
 }
 
+static int cb_SMPTE_12_2(void *callback_context, struct klvanc_context_s *ctx,
+			 struct klvanc_packet_smpte_12_2_s *pkt)
+{
+	/* Have the library display some debug */
+	if (pkt_filtered(&pkt->hdr)) {
+		klvanc_dump_SMPTE_12_2(ctx, pkt);
+	}
+	return 0;
+}
+
 static int cb_all(void *callback_context, struct klvanc_context_s *ctx,
 		  struct klvanc_packet_header_s *pkt)
 {
@@ -278,6 +288,7 @@ static struct klvanc_callbacks_s callbacks =
 	.eia_608                = cb_EIA_608,
 	.scte_104               = cb_SCTE_104,
 	.all                    = cb_all,
+	.smpte_12_2             = cb_SMPTE_12_2,
 };
 
 /* END - CALLBACKS for message notification */
