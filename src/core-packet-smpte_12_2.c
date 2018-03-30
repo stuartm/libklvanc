@@ -157,17 +157,9 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 					   const struct klvanc_packet_smpte_12_2_s *pkt,
 					   uint8_t **bytes, uint16_t *byteCount)
 {
-#if 0
-	const struct klvanc_multiple_operation_message *m;
+	uint8_t *buf;
 
 	if (!pkt || !bytes) {
-		return -1;
-	}
-
-	if (pkt->so_msg.opID != 0xffff) {
-		/* We don't currently support anything but Multiple Operation
-		   Messages */
-		PRINT_ERR("msg opid not 0xffff.  Provided=0x%x\n", pkt->so_msg.opID);
 		return -1;
 	}
 
@@ -175,124 +167,104 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 	if (bs == NULL)
 		return -1;
 
-	*bytes = malloc(255);
-	if (*bytes == NULL) {
+	buf = malloc(16);
+	if (buf == NULL) {
 		klbs_free(bs);
 		return -1;
 	}
 
-	m = &pkt->mo_msg;
+	/* Serialize the Timecode into a binary blob conforming to SMPTE 12-1 */
+	klbs_write_set_buffer(bs, buf, 16);
 
-	/* Serialize the SCTE 104 into a binary blob */
-	klbs_write_set_buffer(bs, *bytes, 255);
+        /* FIXME: Assumes VITC code */
 
-	klbs_write_bits(bs, 0x08, 8); /* SMPTE 2010 Payload Descriptor */
-
-	klbs_write_bits(bs, 0xffff, 16); /* reserved */
-
-	klbs_write_bits(bs, m->messageSize, 16);
-	klbs_write_bits(bs, m->protocol_version, 8);
-	klbs_write_bits(bs, m->AS_index, 8);
-	klbs_write_bits(bs, m->message_number, 8);
-	klbs_write_bits(bs, m->DPI_PID_index, 16);
-	klbs_write_bits(bs, m->SCTE35_protocol_version, 8);
-	klbs_write_bits(bs, m->timestamp.time_type, 8);
-
-	const struct klvanc_multiple_operation_message_timestamp *ts = &m->timestamp;
-	switch(ts->time_type) {
-	case 1:
-		klbs_write_bits(bs, ts->time_type_1.UTC_seconds, 32);
-		klbs_write_bits(bs, ts->time_type_1.UTC_microseconds, 16);
-		break;
-	case 2:
-		klbs_write_bits(bs, ts->time_type_2.hours, 8);
-		klbs_write_bits(bs, ts->time_type_2.minutes, 8);
-		klbs_write_bits(bs, ts->time_type_2.seconds, 8);
-		klbs_write_bits(bs, ts->time_type_2.frames, 8);
-		break;
-	case 3:
-		klbs_write_bits(bs, ts->time_type_3.GPI_number, 8);
-		klbs_write_bits(bs, ts->time_type_3.GPI_edge, 8);
-		break;
-	case 0:
-		/* No time standard defined */
-		break;
-	default:
-		PRINT_ERR("%s() unsupported time_type 0x%x, assuming no time.\n",
-			__func__, ts->time_type);
-		break;
+	/* See SMPTE 12-2:2014 Table 6 */
+	if (pkt->dbb1 == 0x01 || pkt->dbb1 == 0x02) {
+		/* UDW 1 */
+		klbs_write_bits(bs, pkt->frames % 10, 4); /* Units of frames 1-8 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 2 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 1 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 3 */
+		klbs_write_bits(bs, 0x00, 2); /* Flags */
+		klbs_write_bits(bs, (pkt->frames / 20) & 0x01, 1); /* Tens of frames 20 */
+		klbs_write_bits(bs, (pkt->frames / 10) & 0x01, 1); /* Tens of frames 10 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 4 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 2 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 5 */
+		klbs_write_bits(bs, pkt->seconds % 10, 4); /* Units of seconds 1-8 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 6 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 3 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 7 */
+		klbs_write_bits(bs, 0x00, 1); /* Flag */
+		klbs_write_bits(bs, (pkt->seconds / 40) & 0x01, 1); /* Tens of seconds 40 */
+		klbs_write_bits(bs, (pkt->seconds / 20) & 0x01, 1); /* Tens of seconds 20 */
+		klbs_write_bits(bs, (pkt->seconds / 10) & 0x01, 1); /* Tens of seconds 10 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 8 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 4 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 9 */
+		klbs_write_bits(bs, pkt->minutes % 10, 4); /* Units of minutes 1-8 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 10 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 5 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 11 */
+		klbs_write_bits(bs, 0x00, 1); /* Flag */
+		klbs_write_bits(bs, (pkt->minutes / 40) & 0x01, 1); /* Tens of minutes 40 */
+		klbs_write_bits(bs, (pkt->minutes / 20) & 0x01, 1); /* Tens of minutes 20 */
+		klbs_write_bits(bs, (pkt->minutes / 10) & 0x01, 1); /* Tens of minutes 10 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 12 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 6 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 13 */
+		klbs_write_bits(bs, pkt->hours % 10, 4); /* Units of hours 1-8 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 14 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 7 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 15 */
+		klbs_write_bits(bs, 0x00, 2); /* Flags */
+		klbs_write_bits(bs, (pkt->hours / 20) & 0x01, 1); /* Tens of hours 20 */
+		klbs_write_bits(bs, (pkt->hours / 10) & 0x01, 1); /* Tens of hours 10 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+		/* UDW 16 */
+		klbs_write_bits(bs, 0x00, 4); /* Binary group 8 */
+		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
+	} else {
+		PRINT_DEBUG("DBB1 type not yet supported: %02x\n", pkt->dbb1);
 	}
 
-	klbs_write_bits(bs, m->num_ops, 8);
-	for (int i = 0; i < m->num_ops; i++) {
-		unsigned char *outBuf = NULL;
-		uint16_t outSize = 0;
-		const struct klvanc_multiple_operation_message_operation *o = &m->ops[i];
-		switch (o->opID) {
-		case MO_SPLICE_REQUEST_DATA:
-			gen_splice_request_data(&o->sr_data, &outBuf, &outSize);
-			break;
-		case MO_SPLICE_NULL_REQUEST_DATA:
-			gen_splice_null_request_data(&outBuf, &outSize);
-			break;
-		case MO_TIME_SIGNAL_REQUEST_DATA:
-			gen_time_signal_request_data(&o->timesignal_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_DESCRIPTOR_REQUEST_DATA:
-			gen_descriptor_request_data(&o->descriptor_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_DTMF_REQUEST_DATA:
-			gen_dtmf_request_data(&o->dtmf_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_AVAIL_DESCRIPTOR_REQUEST_DATA:
-			gen_avail_request_data(&o->avail_descriptor_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_SEGMENTATION_REQUEST_DATA:
-			gen_segmentation_request_data(&o->segmentation_data, &outBuf, &outSize);
-			break;
-		case MO_PROPRIETARY_COMMAND_REQUEST_DATA:
-			gen_proprietary_command_request_data(&o->proprietary_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_TIER_DATA:
-			gen_tier_data(&o->tier_data, &outBuf, &outSize);
-			break;
-		case MO_INSERT_TIME_DESCRIPTOR:
-			gen_time_descriptor(&o->time_data, &outBuf, &outSize);
-			break;
-		default:
-			PRINT_ERR("Unknown operation type 0x%04x\n", o->opID);
-			continue;
-		}
-		/* FIXME */
-
-		klbs_write_bits(bs, o->opID, 16);
-		klbs_write_bits(bs, outSize, 16);
-		for (int j = 0; j < outSize; j++) {
-			klbs_write_bits(bs, outBuf[j], 8);
-		}
-		free(outBuf);
-	}
 	klbs_write_buffer_complete(bs);
 
-	/* Recompute the total message size now that everything has been serialized to
-	   a single buffer.  Note we subtract 1 from the total because this buffer
-	   represents the SMPTE 2010 packet, not the multiple operation message payload */
-	uint16_t buffer_size = klbs_get_byte_count(bs) - 1;
-	(*bytes)[3] = buffer_size >> 8;
-	(*bytes)[4] = buffer_size & 0xff;
+	/* Now go back and fill in DBB1/DBB2 */
+	for (int i = 0; i < 8; i++) {
+		buf[i] |= ((pkt->dbb1 >> i) & 0x01) << 3;
+	}
+	for (int i = 0; i < 8; i++) {
+		buf[i+8] |= ((pkt->dbb2 >> i) & 0x01) << 3;
+	}
 
 #if 0
 	PRINT_DEBUG("Resulting buffer size=%d\n", klbs_get_byte_count(bs));
 	PRINT_DEBUG(" ->payload  = ");
 	for (int i = 0; i < klbs_get_byte_count(bs); i++) {
-		PRINT_DEBUG("%02x ", (*bytes)[i]);
+		PRINT_DEBUG("%02x ", buf[i]);
 	}
 	PRINT_DEBUG("\n");
 #endif
 
+	*bytes = buf;
 	*byteCount = klbs_get_byte_count(bs);
 	klbs_free(bs);
-#endif
+
 	return 0;
 }
 
