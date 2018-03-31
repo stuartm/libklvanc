@@ -36,9 +36,12 @@ static const char *dbb1_types(unsigned char val)
 		return "Locally generated time address and user data";
 
 	switch (val) {
-	case 0x00: return "Linear time code (ATC_LTC)";
-	case 0x01: return "ATC_VITC1";
-	case 0x02: return "ATC_VITC2";
+	case 0x00:
+		return "Linear time code (ATC_LTC)";
+	case 0x01:
+		return "ATC_VITC1";
+	case 0x02:
+		return "ATC_VITC2";
 	case 0x03:
 	case 0x04:
 	case 0x05:
