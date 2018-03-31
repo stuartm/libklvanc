@@ -95,6 +95,13 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 	for (int i = 0; i < 8; i++) {
 		pkt->dbb2 |= ((hdr->payload[i+8] >> 3) & 0x01) << i;
 	}
+	pkt->vitc_line_select = pkt->dbb2 & 0x1f;
+	if (pkt->dbb2 & 0x20)
+		pkt->line_duplication_flag = 1;
+	if (pkt->dbb2 & 0x40)
+		pkt->tc_validity_flag = 1;
+	if (pkt->dbb2 & 0x80)
+		pkt->user_bits_process_flag = 1;
 
 	if (pkt->dbb1 == 0x01 || pkt->dbb1 == 0x02) {
 		/* ATC_VITC */
@@ -145,10 +152,10 @@ int klvanc_dump_SMPTE_12_2(struct klvanc_context_s *ctx, void *p)
 
 	PRINT_DEBUG(" DBB1 = %02x (%s)\n", pkt->dbb1, dbb1_types(pkt->dbb1));
 	PRINT_DEBUG(" DBB2 = %02x\n", pkt->dbb2);
-	PRINT_DEBUG(" DBB2 VITC line select = 0x%02x\n", pkt->dbb2 & 0x1f);
-	PRINT_DEBUG(" DBB2 line duplication flag = %d\n", (pkt->dbb2 >> 5) & 0x01);
-	PRINT_DEBUG(" DBB2 time code validity = %d\n", (pkt->dbb2 >> 6) & 0x01);
-	PRINT_DEBUG(" DBB2 (User bits) process bit = %d\n", (pkt->dbb2 >> 7) & 0x01);
+	PRINT_DEBUG(" DBB2 VITC line select = 0x%02x\n", pkt->vitc_line_select);
+	PRINT_DEBUG(" DBB2 line duplication flag = %d\n", pkt->line_duplication_flag);
+	PRINT_DEBUG(" DBB2 time code validity = %d\n", pkt->tc_validity_flag);
+	PRINT_DEBUG(" DBB2 (User bits) process bit = %d\n", pkt->user_bits_process_flag);
 
 	PRINT_DEBUG(" Timecode = %02d:%02d:%02d:%02d\n", pkt->hours, pkt->minutes,
 		    pkt->seconds, pkt->frames);
@@ -160,6 +167,7 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 					   const struct klvanc_packet_smpte_12_2_s *pkt,
 					   uint8_t **bytes, uint16_t *byteCount)
 {
+	uint8_t dbb2;
 	uint8_t *buf;
 
 	if (!pkt || !bytes) {
@@ -251,8 +259,16 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 	for (int i = 0; i < 8; i++) {
 		buf[i] |= ((pkt->dbb1 >> i) & 0x01) << 3;
 	}
+	dbb2 = pkt->vitc_line_select;
+	if (pkt->line_duplication_flag)
+		dbb2 |= 0x20;
+	if (pkt->tc_validity_flag)
+		dbb2 |= 0x40;
+	if (pkt->user_bits_process_flag)
+		dbb2 |= 0x80;
+
 	for (int i = 0; i < 8; i++) {
-		buf[i+8] |= ((pkt->dbb2 >> i) & 0x01) << 3;
+		buf[i+8] |= ((dbb2 >> i) & 0x01) << 3;
 	}
 
 #if 0

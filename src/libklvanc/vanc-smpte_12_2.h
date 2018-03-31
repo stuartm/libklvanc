@@ -48,6 +48,11 @@ struct klvanc_packet_smpte_12_2_s
 	uint8_t dbb1;
 	uint8_t dbb2;
 
+	uint8_t vitc_line_select;
+	uint8_t line_duplication_flag;
+	uint8_t tc_validity_flag;
+	uint8_t user_bits_process_flag;
+
 	/* Timecode data */
 	uint8_t frames;
 	uint8_t seconds;
