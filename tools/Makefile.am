@@ -60,3 +60,4 @@ test: klvanc_eia708 klvanc_genscte104 klvanc_scte104
 	./klvanc_eia708
 	./klvanc_genscte104
 	./klvanc_scte104
+	./klvanc_smpte12_2
