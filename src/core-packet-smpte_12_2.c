@@ -61,6 +61,16 @@ static const char *dbb1_types(unsigned char val)
 	}
 }
 
+int klvanc_alloc_SMPTE_12_2(struct klvanc_packet_smpte_12_2_s **outPkt)
+{
+	struct klvanc_packet_smpte_12_2_s *pkt = (struct klvanc_packet_smpte_12_2_s *) calloc(1, sizeof(struct klvanc_packet_smpte_12_2_s));
+	if (pkt == NULL)
+		return -1;
+
+        *outPkt = pkt;
+        return 0;
+}
+
 void klvanc_free_SMPTE_12_2(void *p)
 {
 	struct klvanc_packet_smpte_12_2_s *pkt = p;

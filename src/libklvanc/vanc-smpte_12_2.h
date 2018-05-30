@@ -66,7 +66,7 @@ struct klvanc_packet_smpte_12_2_s
  * @return	0 - Success
  * @return	< 0 - Error
  */
-int klvanc_alloc_SMPTE_12_2(uint16_t opId, struct klvanc_packet_smpte_12_2_s **pkt);
+int klvanc_alloc_SMPTE_12_2(struct klvanc_packet_smpte_12_2_s **pkt);
 
 /**
  * @brief       TODO - Brief description goes here.
