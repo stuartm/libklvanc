@@ -139,8 +139,6 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 			pkt->hours += 10;
 		if (hdr->payload[14] & 0x20)
 			pkt->hours += 20;
-		if (hdr->payload[14] & 0x40)
-			pkt->hours += 40;
 	} else {
 		PRINT_DEBUG("DBB type parsing not yet implemented for dbb1 type 0x%x\n",
 			pkt->dbb1);
