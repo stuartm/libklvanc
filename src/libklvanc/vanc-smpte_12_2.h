@@ -58,6 +58,22 @@ struct klvanc_packet_smpte_12_2_s
 	uint8_t seconds;
 	uint8_t minutes;
 	uint8_t hours;
+
+	/* See ST 12-1:2014 Table 11 for the meanings of these
+	   flags, which may vary depending on the framerate */
+
+	/* Drop frame flag in 30/60.  Always zero in 25/50/24/48 */
+	uint8_t flag14;
+	/* Color frame flag in 30/60/25/50.  Always zero in 24/48 */
+	uint8_t flag15;
+	/* Field Bit/LTC Polarity in 30/60/24/48.  BGF0 in 25/50 */
+	uint8_t flag35;
+	/* BGF0 in 30/60/24/48.  BGF2 in 25/50 */
+	uint8_t flag55;
+	/* BGF1 in all framerates */
+	uint8_t flag74;
+	/* BGF2 in 30/60/24/48.  Field Bit/LTC Polarity in 25/50 */
+	uint8_t flag75;
 };
 
 /**

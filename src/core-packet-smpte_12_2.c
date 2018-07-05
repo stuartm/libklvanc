@@ -120,6 +120,10 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 			pkt->frames += 10;
 		if (hdr->payload[2] & 0x20)
 			pkt->frames += 20;
+		if (hdr->payload[2] & 0x40)
+			pkt->flag14 = 1;
+		if (hdr->payload[2] & 0x80)
+			pkt->flag15 = 1;
 		pkt->seconds = (hdr->payload[4] >> 4) & 0x0f;
 		if (hdr->payload[6] & 0x10)
 			pkt->seconds += 10;
@@ -127,6 +131,8 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 			pkt->seconds += 20;
 		if (hdr->payload[6] & 0x40)
 			pkt->seconds += 40;
+		if (hdr->payload[6] & 0x80)
+			pkt->flag35 = 1;
 		pkt->minutes = (hdr->payload[8] >> 4) & 0x0f;
 		if (hdr->payload[10] & 0x10)
 			pkt->minutes += 10;
@@ -134,11 +140,17 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 			pkt->minutes += 20;
 		if (hdr->payload[10] & 0x40)
 			pkt->minutes += 40;
+		if (hdr->payload[10] & 0x80)
+			pkt->flag55 = 1;
 		pkt->hours = (hdr->payload[12] >> 4) & 0x0f;
 		if (hdr->payload[14] & 0x10)
 			pkt->hours += 10;
 		if (hdr->payload[14] & 0x20)
 			pkt->hours += 20;
+		if (hdr->payload[14] & 0x40)
+			pkt->flag74 = 1;
+		if (hdr->payload[14] & 0x80)
+			pkt->flag75 = 1;
 	} else {
 		PRINT_DEBUG("DBB type parsing not yet implemented for dbb1 type 0x%x\n",
 			pkt->dbb1);
@@ -206,7 +218,8 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 		klbs_write_bits(bs, 0x00, 4); /* Binary group 1 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
 		/* UDW 3 */
-		klbs_write_bits(bs, 0x00, 2); /* Flags */
+		klbs_write_bits(bs, pkt->flag14, 1);
+		klbs_write_bits(bs, pkt->flag15, 1);
 		klbs_write_bits(bs, (pkt->frames / 20) & 0x01, 1); /* Tens of frames 20 */
 		klbs_write_bits(bs, (pkt->frames / 10) & 0x01, 1); /* Tens of frames 10 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
@@ -220,7 +233,7 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 		klbs_write_bits(bs, 0x00, 4); /* Binary group 3 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
 		/* UDW 7 */
-		klbs_write_bits(bs, 0x00, 1); /* Flag */
+		klbs_write_bits(bs, pkt->flag35, 1); /* Flag */
 		klbs_write_bits(bs, (pkt->seconds / 40) & 0x01, 1); /* Tens of seconds 40 */
 		klbs_write_bits(bs, (pkt->seconds / 20) & 0x01, 1); /* Tens of seconds 20 */
 		klbs_write_bits(bs, (pkt->seconds / 10) & 0x01, 1); /* Tens of seconds 10 */
@@ -235,7 +248,7 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 		klbs_write_bits(bs, 0x00, 4); /* Binary group 5 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
 		/* UDW 11 */
-		klbs_write_bits(bs, 0x00, 1); /* Flag */
+		klbs_write_bits(bs, pkt->flag55, 1); /* Flag */
 		klbs_write_bits(bs, (pkt->minutes / 40) & 0x01, 1); /* Tens of minutes 40 */
 		klbs_write_bits(bs, (pkt->minutes / 20) & 0x01, 1); /* Tens of minutes 20 */
 		klbs_write_bits(bs, (pkt->minutes / 10) & 0x01, 1); /* Tens of minutes 10 */
@@ -250,7 +263,8 @@ int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 		klbs_write_bits(bs, 0x00, 4); /* Binary group 7 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
 		/* UDW 15 */
-		klbs_write_bits(bs, 0x00, 2); /* Flags */
+		klbs_write_bits(bs, pkt->flag74, 1);
+		klbs_write_bits(bs, pkt->flag75, 1);
 		klbs_write_bits(bs, (pkt->hours / 20) & 0x01, 1); /* Tens of hours 20 */
 		klbs_write_bits(bs, (pkt->hours / 10) & 0x01, 1); /* Tens of hours 10 */
 		klbs_write_bits(bs, 0x00, 4); /* b0-b3 */
