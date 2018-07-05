@@ -130,9 +130,9 @@ int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 		pkt->minutes = (hdr->payload[8] >> 4) & 0x0f;
 		if (hdr->payload[10] & 0x10)
 			pkt->minutes += 10;
-		if (hdr->payload[6] & 0x20)
+		if (hdr->payload[10] & 0x20)
 			pkt->minutes += 20;
-		if (hdr->payload[6] & 0x40)
+		if (hdr->payload[10] & 0x40)
 			pkt->minutes += 40;
 		pkt->hours = (hdr->payload[12] >> 4) & 0x0f;
 		if (hdr->payload[14] & 0x10)
