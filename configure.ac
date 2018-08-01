@@ -60,7 +60,7 @@ AC_TYPE_UINT8_T
 # Checks for library functions.
 AC_CHECK_FUNCS([memset strrchr])
 
-AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile libklvanc.pc])
 AC_OUTPUT
 
 # Add debug support
