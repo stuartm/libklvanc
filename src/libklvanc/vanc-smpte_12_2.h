@@ -35,6 +35,19 @@
 extern "C" {
 #endif  
 
+/* DBB1 payload types (See Sec 6.2.1 Table 2) */
+#define KLVANC_ATC_LTC 0x00
+#define KLVANC_ATC_VITC1 0x01
+#define KLVANC_ATC_VITC2 0x02
+/* Codes 3-5 are user defined */
+#define KLVANC_FILM_DATA_BLOCK 0x06
+#define KLVANC_PROD_DATA_BLOCK 0x07
+/* Codes 0x08 to 0x7c are "locally generated time address and user data (user defined) */
+#define KLVANC_VID_TAPE_DATA_BLOCK_LOCAL 0x7d
+#define KLVANC_FILM_DATA_BLOCK_LOCAL 0x7e
+#define KLVANC_PROD_DATA_BLOCK_LOCAL 0x7f
+/* Codes 0x80 to 0xff are Reserved */
+
 /**
  * @brief       TODO - Brief description goes here.
  */
@@ -77,12 +90,26 @@ struct klvanc_packet_smpte_12_2_s
 };
 
 /**
- * @brief       TODO - Brief description goes here.
+ * @brief       Create SMPTE ST 12-2 timecode
  * @param[in]	struct vanc_context_s *ctx, void *p - Brief description goes here.
  * @return	0 - Success
  * @return	< 0 - Error
  */
 int klvanc_alloc_SMPTE_12_2(struct klvanc_packet_smpte_12_2_s **pkt);
+
+/**
+ * @brief       Create SMPTE ST 12-2 timecode from SMPTE 370 / 314 timecode
+ * @param[in]	uint32_t st370_tc - Packed binary representation of timecode as described in SMPTE ST 370:2013 Sec 3.4.2.2.1 and SMPTE S314M-2015 Sec 4.4.2.2.1
+ * @param[in]	int frate_num - framerate numerator (e.g. 1001)
+ * @param[in]	int frate_den - framerate denominator (e.g. 30000)
+ * @param[out]	struct klvanc_packet_smpte_12_2_s **pkt - newly created packet
+ * @return	0 - Success
+ * @return	< 0 - Error
+ */
+int klvanc_create_SMPTE_12_2_from_ST370(uint32_t st370_tc,
+					int frate_num, int frate_den,
+					struct klvanc_packet_smpte_12_2_s **pkt);
+
 
 /**
  * @brief       TODO - Brief description goes here.
@@ -127,6 +154,19 @@ int klvanc_convert_SMPTE_12_2_to_words(struct klvanc_context_s *ctx,
 int klvanc_convert_SMPTE_12_2_to_packetBytes(struct klvanc_context_s *ctx,
 					   const struct klvanc_packet_smpte_12_2_s *pkt,
 					   uint8_t **bytes, uint16_t *byteCount);
+
+/**
+ * @brief	Determine the appropriate line to insert this S-12 packet onto.
+ *            This takes into consideration interoperability with legacy
+ *            equipment, as described in SMPTE S-12-2:2014 Sec 8.2.1.
+ * @param[in]	int dbb1 - The Payload type of this S-12-2 packet
+ * @param[in]	int lineCount - The number of lines in the video frame
+ * @param[in]	int interlaced - whether the video frame is interlaced
+ * @return      > 0 Line number to insert into
+ * @return      < 0 - Error
+ */
+
+int klvanc_SMPTE_12_2_preferred_line(int dbb1, int lineCount, int interlaced);
 
 #ifdef __cplusplus
 };

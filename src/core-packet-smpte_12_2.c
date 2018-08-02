@@ -81,6 +81,73 @@ void klvanc_free_SMPTE_12_2(void *p)
 	free(pkt);
 }
 
+static unsigned bcd2uint(uint8_t bcd)
+{
+	unsigned low  = bcd & 0xf;
+	unsigned high = bcd >> 4;
+	if (low > 9 || high > 9)
+		return 0;
+	return low + 10*high;
+}
+
+static int gcd (int a, int b)
+{
+	int r;
+	while (b > 0) {
+		r = a % b;
+		a = b;
+		b = r;
+	}
+	return a;
+}
+
+int klvanc_create_SMPTE_12_2_from_ST370(uint32_t st370_tc,
+					int frate_num, int frate_den,
+					struct klvanc_packet_smpte_12_2_s **pkt)
+{
+	struct klvanc_packet_smpte_12_2_s *timecode;
+	int gcd_val, ret;
+
+	gcd_val = gcd(frate_num, frate_den);
+	frate_num /= gcd_val;
+	frate_den /= gcd_val;
+
+	ret = klvanc_alloc_SMPTE_12_2(&timecode);
+	if (ret < 0)
+		return ret;
+	*pkt = timecode;
+
+	/* See SMPTE ST 314M-2005 Sec 4.4.2.2.1 "Time code pack (TC)" */
+	timecode->frames = bcd2uint(st370_tc >> 24 & 0x3f);
+	timecode->seconds = bcd2uint(st370_tc >> 16 & 0x7f);
+	timecode->minutes = bcd2uint(st370_tc >> 8  & 0x7f);
+	timecode->hours = bcd2uint(st370_tc & 0x3f);
+	if ((frate_num == 1 && frate_den == 50) ||
+	    (frate_num == 1 && frate_den == 25)) {
+		/* Field bit */
+		if (st370_tc & 0x00800000) {
+			timecode->dbb1 = 0x02; /* ATC_VITC2 */
+			timecode->flag75 = 0x01;
+		} else {
+			timecode->dbb1 = 0x01; /* ATC_VITC1 */
+		}
+	} else {
+		/* Field bit */
+		if (st370_tc & 0x00000080) {
+			timecode->dbb1 = 0x02; /* ATC_VITC2 */
+			timecode->flag35 = 0x01;
+		} else {
+			timecode->dbb1 = 0x01; /* ATC_VITC1 */
+		}
+		/* Drop frame flag */
+		if (st370_tc & 0x40000000) {
+			timecode->flag14 = 0x01;
+		}
+	}
+
+	return 0;
+}
+
 int parse_SMPTE_12_2(struct klvanc_context_s *ctx,
 		   struct klvanc_packet_header_s *hdr, void **pp)
 {
@@ -328,4 +395,49 @@ int klvanc_convert_SMPTE_12_2_to_words(struct klvanc_context_s *ctx,
 	free(buf);
 
 	return 0;
+}
+
+struct s12_lines {
+	int payload_type;
+	int linecount;
+	int interlaced;
+	int preferred_line;
+};
+
+int klvanc_SMPTE_12_2_preferred_line(int dbb1, int lineCount, int interlaced)
+{
+    /* The table below is constructed by using ST 12-2:2014 Sec 8.2.1 for HD
+       resolutions, and Sec 8.2.2 for SD (which says as early as posssible
+       after second line of switching point as defined in SMPTE RP-168) */
+
+    struct s12_lines lines[] = {
+        {KLVANC_ATC_VITC1, 1080, 1, 9},
+        {KLVANC_ATC_VITC1, 1080, 0, 9},
+        {KLVANC_ATC_VITC1, 720, 0, 9},
+        {KLVANC_ATC_VITC1, 486, 1, 12},
+        {KLVANC_ATC_VITC1, 576, 1, 8},
+        {KLVANC_ATC_VITC2, 1080, 1, 571},
+        {KLVANC_ATC_VITC2, 1080, 0, 9},
+        {KLVANC_ATC_VITC2, 720, 0, 9},
+        {KLVANC_ATC_VITC2, 486, 1, 275},
+        {KLVANC_ATC_VITC2, 576, 1, 321},
+    };
+
+    for (int i = 0; i < (sizeof(lines)/sizeof(struct s12_lines)); i++) {
+	    if (dbb1 == lines[i].payload_type &&
+		lineCount == lines[i].linecount &&
+		interlaced == lines[i].interlaced) {
+		    return lines[i].preferred_line;
+	    }
+    }
+
+    if (dbb1 != KLVANC_ATC_VITC1 && dbb1 != KLVANC_ATC_VITC1 &&
+        dbb1 != KLVANC_ATC_LTC) {
+	    /* Table 7 says any line except 9, 10, and 571, so we choose
+	       line 11 */
+	    return 11;
+    }
+
+    /* Not found */
+    return -1;
 }
