@@ -217,3 +217,38 @@ int klvanc_generate_vanc_line_v210(struct klvanc_context_s *ctx,
 	free(out_line);
 	return 0;
 }
+
+/* Field structure defined from the named standard.  Switching lines
+   are derived from SMPTE RP 168:2009 Sec 6, Table 2. */
+const static struct klvanc_frame_setup klvanc_frame_definitions[] = {
+	{  720,  486, 1, 1, 10,  19, 264, 273, 282 }, /* SMPTE ST 349:2001 Sec 5.11.2, Table 2 */
+	{  720,  486, 0, 1, 10,  42,   0,   0,   0 }, /* SMPTE ST 347:2001 Fig 6 */
+	{  720,  576, 1, 1,  6,  22, 311, 319, 335 }, /* SMPTE ST 349:2001 Sec 5.11.2, Table 2 */
+	{  720,  576, 0, 1,  6,  44,   0,   0,   0 }, /* SMPTE ST 347:2001 Fig 8 */
+	{ 1280,  720, 0, 1,  7,  25,   0,   0,   0 }, /* SMPTE ST 296:2012 Sec 5 */
+	{ 1920, 1080, 1, 1,  7,  20, 561, 569, 583 }, /* SMPTE ST 274:2008 Sec 7.3 */
+	{ 1920, 1080, 0, 1,  7,  41,   0,   0,   0 }, /* SMPTE ST 274:2008 Sec 7.2 */
+	{ 2048, 1080, 1, 1,  7,  20, 561, 569, 583 }, /* SMPTE ST 2048-2 */
+	{ 2048, 1080, 0, 1,  7,  41,   0,   0,   0 }, /* SMPTE ST 2048-2 */
+	/* djh - Unsure about the switching line for these next two (not
+	   specified in RP 168:2009) */
+	{ 3840, 2160, 0, 1, 28, 164,   0,   0,   0 }, /* SMPTE ST 2082-10 Annex A */
+	{ 4096, 2160, 0, 1, 28, 164,   0,   0,   0 }, /* SMPTE ST 2082-10 Annex A */
+};
+
+int klvanc_get_frame_setup(struct klvanc_context_s *ctx, int width, int height,
+			   int interlaced, const struct klvanc_frame_setup **frame_structure)
+{
+	for (int i = 0; i < (sizeof(klvanc_frame_definitions)
+			     / sizeof(struct klvanc_frame_setup)); i++) {
+		if (width == klvanc_frame_definitions[i].frame_width &&
+		    height == klvanc_frame_definitions[i].frame_height &&
+		    klvanc_frame_definitions[i].interlaced == interlaced) {
+			*frame_structure = &klvanc_frame_definitions[i];
+			return 0;
+		}
+	}
+
+	/* Not found */
+	return -1;
+}

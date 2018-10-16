@@ -161,6 +161,38 @@ int klvanc_generate_vanc_line(struct klvanc_context_s *ctx, struct klvanc_line_s
 int klvanc_generate_vanc_line_v210(struct klvanc_context_s *ctx, struct klvanc_line_s *line,
 				   uint8_t *out_buf, int line_pixel_width);
 
+struct klvanc_frame_setup {
+	uint16_t frame_height;
+	uint16_t frame_width;
+	uint8_t  interlaced;
+	uint16_t f1_start;
+	uint16_t f1_switchingline;
+	uint16_t f1_vancend;
+	uint16_t f2_start;
+	uint16_t f2_switchingline;
+	uint16_t f2_vancend;
+};
+
+/**
+ * @brief	Retrieve VANC regions associated with specified video mode.  This
+ *              routine allows an application to know the lines that constitute the VANC
+ *              region for the specified video mode.  This includes both VANC regions
+ *              for interlaced video, as well as the location of the switching lines
+ *              (used to ascertain the POST-switching region.
+ *
+ * @param[in]	struct klvanc_context_s *ctx - Context.
+ * @param[in]	int width - the width of active video
+ * @param[in]	int height - the height of active video
+ * @param[in]	int interlaced - Whether the video is interlaced (1=interlaced)
+ * @param[out]	const struct klvanc_frame_setup **frame_structure - video description matching the specified parameters.  Note that the returned struct pointer is const, so should not be modified nor is there a need to call free() against the returned pointer.
+ * @return      0 - Success
+ * @return      -1 - No matching entry found
+ */
+
+int klvanc_get_frame_setup(struct klvanc_context_s *ctx, int width, int height,
+			   int interlaced, const struct klvanc_frame_setup **frame_structure);
+
+
 #ifdef __cplusplus
 };
 #endif  
