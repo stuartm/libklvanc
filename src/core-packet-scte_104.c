@@ -589,6 +589,41 @@ static int gen_proprietary_command_request_data(const struct klvanc_proprietary_
 	return 0;
 }
 
+static unsigned char *parse_schedule_definition_data(unsigned char *p,
+							     struct klvanc_schedule_definition_data *d,
+							     unsigned int descriptor_size)
+{
+	d->splice_schedule_command = *(p++);
+	d->splice_event_id = *(p + 0) << 24 | *(p + 1) << 16 | *(p + 2) <<  8 | *(p + 3); p += 4;
+	d->time = *(p + 0) << 24 | *(p + 1) << 16 | *(p + 2) <<  8 | *(p + 3); p += 4;
+	d->unique_program_id = *(p + 0) <<  8 | *(p + 1); p += 2;
+	d->auto_return = *(p++);
+	d->break_duration = *(p + 0) <<  8 | *(p + 1); p += 2;
+	d->avail_num = *(p++);
+	d->avails_expected = *(p++);
+	
+	return p;
+}
+
+static int gen_schedule_definition_data(const struct klvanc_schedule_definition_data *d,
+						unsigned char **outBuf, uint16_t *outSize)
+{
+	unsigned char *buf;
+	struct klbs_context_s *bs = klbs_alloc();
+	if (bs == NULL)
+		return -1;
+	
+	buf = (unsigned char *) malloc(MAX_DESC_SIZE);
+	if (buf == NULL) {
+		klbs_free(bs);
+		return -1;
+	}
+	
+	// TODO
+	
+	return 0;
+}
+
 static unsigned char *parse_tier_data(unsigned char *p, struct klvanc_tier_data *d)
 {
 	d->tier_data = *(p + 0) << 8 | *(p + 1); p += 2;
@@ -1034,6 +1069,9 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 			else if (o->opID == MO_PROPRIETARY_COMMAND_REQUEST_DATA)
 				parse_proprietary_command_request_data(o->data, &o->proprietary_data,
 								       o->data_length);
+			else if (o->opID == MO_INSERT_SCHEDULE_DEFINITION_DATA)
+				parse_schedule_definition_data(o->data, &o->schedule_definition_data,
+										       o->data_length);
 			else if (o->opID == MO_INSERT_TIER_DATA)
 				parse_tier_data(o->data, &o->tier_data);
 			else if (o->opID == MO_INSERT_TIME_DESCRIPTOR)
@@ -1159,6 +1197,9 @@ int klvanc_convert_SCTE_104_to_packetBytes(struct klvanc_context_s *ctx,
 			break;
 		case MO_PROPRIETARY_COMMAND_REQUEST_DATA:
 			gen_proprietary_command_request_data(&o->proprietary_data, &outBuf, &outSize);
+			break;
+        case MO_INSERT_SCHEDULE_DEFINITION_DATA:
+			gen_schedule_definition_data(&o->schedule_definition_data, &outBuf, &outSize);
 			break;
 		case MO_INSERT_TIER_DATA:
 			gen_tier_data(&o->tier_data, &outBuf, &outSize);

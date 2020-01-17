@@ -59,6 +59,7 @@ extern "C" {
 #define MO_INSERT_AVAIL_DESCRIPTOR_REQUEST_DATA  0x10a
 #define MO_INSERT_SEGMENTATION_REQUEST_DATA  0x10b
 #define MO_PROPRIETARY_COMMAND_REQUEST_DATA  0x10c
+#define MO_INSERT_SCHEDULE_DEFINITION_DATA  0x10e
 #define MO_INSERT_TIER_DATA  0x10f
 #define MO_INSERT_TIME_DESCRIPTOR  0x110
 
@@ -86,6 +87,13 @@ extern "C" {
  * @brief       TODO - Brief description goes here.
  */
 #define SPLICE_CANCEL         0x05
+
+/**
+ * @brief       splice_schedule_command values - Table 9-20
+ */
+#define SCHEDULECOMMAND_INSERT 0x01
+#define SCHEDULECOMMAND_RETURN 0x03
+#define SCHEDULECOMMAND_CANCEL 0x05
 
 /**
  * @brief       TODO - Brief description goes here.
@@ -233,6 +241,22 @@ struct klvanc_proprietary_command_request_data
 };
 
 /**
+ * @brief Schedule Definition Data - Generates splice_schedule events in SCTE35 data
+ */
+struct klvanc_schedule_definition_data
+{
+	/* SCTE 104 Table 9-19 */
+	unsigned char splice_schedule_command;
+	unsigned int splice_event_id;
+	unsigned int time; // Seconds since epoch of  12:00 AM UTC January 6, 1980 (NOTE not UNIX epoch)
+	unsigned short unique_program_id;
+	unsigned char auto_return;
+	unsigned short break_duration;
+	unsigned char avail_num;
+	unsigned char avails_expected;
+};
+
+/**
  * @brief       TODO - Brief description goes here.
  */
 struct klvanc_tier_data
@@ -253,6 +277,7 @@ struct klvanc_multiple_operation_message_operation {
 		struct klvanc_avail_descriptor_request_data avail_descriptor_data;
 		struct klvanc_insert_descriptor_request_data descriptor_data;
 		struct klvanc_proprietary_command_request_data proprietary_data;
+		struct klvanc_schedule_definition_data schedule_definition_data;
 		struct klvanc_tier_data tier_data;
 		struct klvanc_time_descriptor_data time_data;
 	};
