@@ -27,7 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int isValidHeader(struct klvanc_context_s *ctx, unsigned short *arr, unsigned int len)
+static int isValidHeader(struct klvanc_context_s *ctx, const unsigned short *arr, unsigned int len)
 {
 	int ret = 0;
 	if (len > 7) {
@@ -51,13 +51,10 @@ static struct type_s
 	{ 0x40, 0xfe, VANC_TYPE_KL_UINT64_COUNTER, parse_KL_U64LE_COUNTER, klvanc_dump_KL_U64LE_COUNTER, free, },
 	{ 0x41, 0x05, VANC_TYPE_AFD, parse_AFD, klvanc_dump_AFD, free, },
 	{ 0x41, 0x07, VANC_TYPE_SCTE_104, parse_SCTE_104, klvanc_dump_SCTE_104, klvanc_free_SCTE_104, },
-#ifdef SCTE_104_PACKET_TYPE_1
-	{ 0x80, 0x07, VANC_TYPE_SCTE_104, parse_SCTE_104, klvanc_dump_SCTE_104, free, },
-#endif
 	{ 0x60, 0x60, VANC_TYPE_SMPTE_S12_2, parse_SMPTE_12_2, klvanc_dump_SMPTE_12_2, free, },
 	{ 0x61, 0x01, VANC_TYPE_EIA_708B, parse_EIA_708B, klvanc_dump_EIA_708B, free, },
 	{ 0x61, 0x02, VANC_TYPE_EIA_608, parse_EIA_608, klvanc_dump_EIA_608, free, },
-    { 0x43, 0x02, VANC_TYPE_SDP, parse_SDP, klvanc_dump_SDP, free, },
+	{ 0x43, 0x02, VANC_TYPE_SDP, parse_SDP, klvanc_dump_SDP, free, },
 };
 
 static enum klvanc_packet_type_e lookupTypeByDID(unsigned short did, unsigned short sdid)
@@ -125,7 +122,7 @@ static int dumpByType(struct klvanc_context_s *ctx, struct klvanc_packet_header_
 	return -EINVAL;
 }
 
-static int parse(struct klvanc_context_s *ctx, unsigned short *arr, unsigned int len,
+static int parse(struct klvanc_context_s *ctx, const unsigned short *arr, unsigned int len,
 	struct klvanc_packet_header_s **hdr)
 {
 	if (!isValidHeader(ctx, arr, len)) {
@@ -136,8 +133,11 @@ static int parse(struct klvanc_context_s *ctx, unsigned short *arr, unsigned int
 	if (!p)
 		return -ENOMEM;
 
+	/* Place the entire raw frame passed into raw words, but update raw length
+	 * to reflect the detected payload size plus a minor overheader to compenate
+	 * for a few leading header and trailer words.
+	 */
 	memcpy(&p->raw[0], arr, len * sizeof(unsigned short));
-	p->rawLengthWords = len;
 	p->adf[0] = *(arr + 0);
 	p->adf[1] = *(arr + 1);
 	p->adf[2] = *(arr + 2);
@@ -145,6 +145,8 @@ static int parse(struct klvanc_context_s *ctx, unsigned short *arr, unsigned int
 	p->dbnsdid = sanitizeWord(*(arr + 4));
 
 	p->payloadLengthWords = sanitizeWord(*(arr + 5));
+	p->rawLengthWords = p->payloadLengthWords + 8;
+	p->rawLengthWords = len;
 	if (p->payloadLengthWords > (sizeof(p->payload) / sizeof(unsigned short))) {
 		free(p);
 		return -ENOMEM;
@@ -208,16 +210,16 @@ void klvanc_dump_packet_console(struct klvanc_context_s *ctx, struct klvanc_pack
 	PRINT_DEBUG("\n");
 }
 
-int klvanc_packet_parse(struct klvanc_context_s *ctx, unsigned int lineNr, unsigned short *arr, unsigned int len)
+int klvanc_packet_parse(struct klvanc_context_s *ctx, unsigned int lineNr, const unsigned short *arr, unsigned int len)
 {
 	int attempts = 0;
 	VALIDATE(ctx);
 	VALIDATE(arr);
 	VALIDATE(len);
 
-	if (len > 16384) {
+	if (len > LIBKLVANC_PACKET_MAX_PAYLOAD) {
 		/* Safety */
-		PRINT_ERR("%s() length %d exceeds 16384, ignoring.\n", __func__, len);
+		PRINT_ERR("%s() length %d exceeds %d, ignoring.\n", __func__, len, LIBKLVANC_PACKET_MAX_PAYLOAD);
 		return -EINVAL;
 	}
 
@@ -250,7 +252,7 @@ int klvanc_packet_parse(struct klvanc_context_s *ctx, unsigned int lineNr, unsig
 				ctx->callbacks->all(ctx->callback_context, ctx, hdr);
 
 			/* formally decode the entire packet */
-			void *decodedPacket;
+			void *decodedPacket = NULL;
 			ret = parseByType(ctx, hdr, &decodedPacket);
 			if (ret == KLAPI_OK) {
 				if (ctx->verbose == 2) {
@@ -334,6 +336,9 @@ int klvanc_sdi_create_payload(uint8_t sdid, uint8_t did,
 int klvanc_packet_copy(struct klvanc_packet_header_s **dst, struct klvanc_packet_header_s *src)
 {
 	*dst = malloc(sizeof(*src));
+	if (*dst == NULL)
+		return -ENOMEM;
+
 	memcpy(*dst, src, sizeof(*src));
 	return 0;
 }
@@ -343,3 +348,67 @@ void klvanc_packet_free(struct klvanc_packet_header_s *src)
 	free(src);
 }
 
+int klvanc_packet_save(const char *dir, const struct klvanc_packet_header_s *pkt,
+                       int lineNr, int did)
+{
+	if ((dir == NULL) || (pkt == NULL))
+		return -1;
+
+	if (lineNr >= 0 && lineNr != pkt->lineNr)
+		return -2;
+
+	if (did >= 0 && did != pkt->did)
+		return -3;
+
+	const char *c = klvanc_didLookupDescription(pkt->did, pkt->dbnsdid);
+	char *n = strdup(c);
+	for (int i = 0; i < strlen(n); i++)
+		if (n[i] == '/')
+			n[i] = '-'; 
+	
+	static int idx = 0;
+	char *fn = malloc(strlen(dir) + 128);
+	sprintf(fn, "%s/klvanc-packet-%08d--line-%04d--did-%02x--sdid-%02x--name-%s.bin",
+		dir,
+		idx++,
+		pkt->lineNr,
+		pkt->did,
+		pkt->dbnsdid,
+		n);
+
+	FILE *fh = fopen(fn, "wb");
+	if (fh) {
+		/* TODO: This is a debugging feature. I don't like writing msg + N bytes of
+		 *       arbitrary padding, but neither have I convinced myself that
+		 *       writing rawPayloadLength is always (think good or bad long vanc messages)
+		 *       the correct thing to do. This will suffice for the time being.
+		 */
+		fwrite(pkt->raw, 2, pkt->payloadLengthWords + 6 /* header */ + 4 /* trailing padding */, fh);
+		fclose(fh);
+	} else {
+		fprintf(stderr, "Unable to create %s\n", fn);
+	}
+	free(fn);
+	return 0; /* Success */
+}
+
+int klvanc_packet_payload_append(struct klvanc_packet_header_s *dst, struct klvanc_packet_header_s *src, int srcOffset)
+{
+	if (dst->payloadLengthWords + (src->payloadLengthWords - srcOffset) > LIBKLVANC_PACKET_MAX_PAYLOAD) {
+		fprintf(stderr, "%s() Payload Overflow avoided\n", __func__);
+		return -1;
+	}
+
+	if (dst->rawLengthWords + src->rawLengthWords > LIBKLVANC_PACKET_MAX_PAYLOAD) {
+		fprintf(stderr, "%s() Raw Overflow avoided\n", __func__);
+		return -1;
+	}
+
+	memcpy(&dst->payload[dst->payloadLengthWords], &src->payload[srcOffset], (src->payloadLengthWords - srcOffset) * sizeof(uint16_t));
+	dst->payloadLengthWords += (src->payloadLengthWords - srcOffset);
+
+	memcpy(&dst->raw[dst->rawLengthWords], &src->raw[0], src->rawLengthWords * sizeof(uint16_t));
+	dst->rawLengthWords += src->rawLengthWords;
+
+	return 0; /* Success */
+}
