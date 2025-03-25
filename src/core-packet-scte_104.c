@@ -155,7 +155,8 @@ static const char *seg_type_id(unsigned char type_id)
 	case 0x16: return "Program Runover Unplanned";
 	case 0x17: return "Program Overlap Start";
 	case 0x18: return "Program Blackout Override";
-	case 0x19: return "Program Start - In Progress";
+	case 0x19: return "Program Join";
+	case 0x1A: return "Program Immediate Resumption";
 	case 0x20: return "Chapter Start";
 	case 0x21: return "Chapter End";
 	case 0x22: return "Break Start";
@@ -171,13 +172,23 @@ static const char *seg_type_id(unsigned char type_id)
 	case 0x34: return "Provider Placement Opportunity Start";
 	case 0x35: return "Provider Placement Opportunity End";
 	case 0x36: return "Distributor Placement Opportunity Start";
-	case 0x37: return "Distributor Placement Opportunity End";        
+	case 0x37: return "Distributor Placement Opportunity End";
 	case 0x38: return "Provider Overlay Placement Start";
 	case 0x39: return "Provider Overlay Placement End";
 	case 0x3A: return "Distributor Overlay Placement Start";
 	case 0x3B: return "Distributor Overlay Placement End";
+	case 0x3C: return "Provider Promo Start";
+	case 0x3D: return "Provider Promo End";
+	case 0x3E: return "Distributor Promo Start";
+	case 0x3F: return "Distributor Promo End";
 	case 0x40: return "Unscheduled Event Start";
 	case 0x41: return "Unscheduled Event End";
+	case 0x42: return "Alternate Content Opportunity Start";
+	case 0x43: return "Alternate Content Opportunity End";
+	case 0x44: return "Provider Ad Block Start";
+	case 0x45: return "Provider Ad Block End";
+	case 0x46: return "Distributor Ad Block Start";
+	case 0x47: return "Distributor Ad Block End";
 	case 0x50: return "Network Start";
 	case 0x51: return "Network End";
 	default:   return "Unknown";
@@ -204,6 +215,8 @@ static const char *seg_upid_type(unsigned char upid_type)
 	case 0x0d: return "MID()";
 	case 0x0e: return "ADS Information";
 	case 0x0f: return "URI";
+	case 0x10: return "UUID";
+	case 0x11: return "SCR";
 	default:   return "Reserved";
 	}
 }
@@ -615,7 +628,7 @@ static unsigned char *parse_schedule_definition_data(unsigned char *p,
 	d->break_duration = *(p + 0) <<  8 | *(p + 1); p += 2;
 	d->avail_num = *(p++);
 	d->avails_expected = *(p++);
-	
+
 	return p;
 }
 
@@ -626,15 +639,15 @@ static int gen_schedule_definition_data(const struct klvanc_schedule_definition_
 	struct klbs_context_s *bs = klbs_alloc();
 	if (bs == NULL)
 		return -1;
-	
+
 	buf = (unsigned char *) malloc(MAX_DESC_SIZE);
 	if (buf == NULL) {
 		klbs_free(bs);
 		return -1;
 	}
-	
+
 	// TODO
-	
+
 	return 0;
 }
 
@@ -963,7 +976,7 @@ static int messageFragmentAppend(struct klvanc_context_s *ctx, struct klvanc_pac
 	if (ret < 0) {
 		return -1;
 	}
-	ctx->scte104_fragments[ctx->scte104_fragment_count]->rawLengthWords = ctx->scte104_fragments[ctx->scte104_fragment_count]->payloadLengthWords + 7; 
+	ctx->scte104_fragments[ctx->scte104_fragment_count]->rawLengthWords = ctx->scte104_fragments[ctx->scte104_fragment_count]->payloadLengthWords + 7;
 
 	ctx->scte104_fragment_count++;
 
@@ -1042,7 +1055,7 @@ static int messageFragmentFinal(struct klvanc_context_s *ctx, struct klvanc_pack
 	 * containign all of the defrag'd contents. Return this from this function,
 	 * expect the higher levels stack to switch parse to this new hader, instead of the closeing
 	 * framgment header that go us here.
-	 * Clone the fragment final packet, which is mostly correctl, update its headers and paylaod 
+	 * Clone the fragment final packet, which is mostly correctl, update its headers and paylaod
 	 * to incoude al the fragments.
 	 */
 	struct klvanc_packet_header_s *dst;
@@ -1066,7 +1079,7 @@ static int messageFragmentFinal(struct klvanc_context_s *ctx, struct klvanc_pack
 	memset(dst->payload, 0, sizeof(dst->payload));
 
 	for (int i = 0; i < ctx->scte104_fragment_count; i++) {
-		int offset = 0; 
+		int offset = 0;
 		if (i > 0) {
 			offset = 1; /* Skip the payloadDscriptor byte on messages #2 onwards. */
 		}
@@ -1116,7 +1129,7 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 	 * self containined with a single VANC line, and
 	 * are not continuation messages.
 	 * Eg. payloadDescriptor value 0x08.
-	 * 
+	 *
 	 * Duplicate message flags are not supported.
 	 */
 
@@ -1170,7 +1183,7 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 		/* Process a single complete message inside this hdr packet. */
 
 		/* Avoid cases where we're mixing single messages potentially when in the process
-		 * of message fragment building. Lose any previous fragments 
+		 * of message fragment building. Lose any previous fragments
 		 */
 		messageFragmentReset(ctx);
 	}
@@ -1256,7 +1269,7 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 
 		unsigned char *p = &pkt->payload[10];
 		p = parse_mom_timestamp(ctx, p, &mom->timestamp);
-		
+
 		mom->num_ops = *(p++);
 		mom->ops = calloc(mom->num_ops, sizeof(struct klvanc_multiple_operation_message_operation));
 		if (!mom->ops) {
