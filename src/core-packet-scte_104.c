@@ -134,6 +134,9 @@ static const char *mom_operationName(unsigned short opID)
 	case 0x010e: return "schedule_definition_data_request";
 	case 0x010f: return "insert_tier_data";
 	case 0x0110: return "insert_time_descriptor";
+	case 0x0111: return "insert_audio_descriptor request";
+	case 0x0112: return "insert_audio_provisioning request";
+	case 0x0113: return "insert_alternate_break_duration() request";
 	case 0x0300: return "delete_controlword_data_request";
 	case 0x0301: return "update_controlword_data_request";
 	default:     return "Reserved";
@@ -142,7 +145,7 @@ static const char *mom_operationName(unsigned short opID)
 
 static const char *seg_type_id(unsigned char type_id)
 {
-	/* Values come from SCTE 35 2019, Sec 10.3.3.1 (Table 22) */
+	/* Values come from SCTE 35 2022b, Sec 10.3.3.1 (Table 23) */
 	switch (type_id) {
 	case 0x00: return "Not Indicated";
 	case 0x01: return "Content Identification";
@@ -197,7 +200,7 @@ static const char *seg_type_id(unsigned char type_id)
 
 static const char *seg_upid_type(unsigned char upid_type)
 {
-	/* Values come from SCTE 35 2016, Sec 10.3.3.1, Table 21 */
+	/* Values come from SCTE 35 2022b, Sec 10.3.3.1, Table 22 */
 	switch (upid_type) {
 	case 0x00: return "Not Used";
 	case 0x01: return "User Defined (Deprecated)";
@@ -835,11 +838,10 @@ static int dump_mom(struct klvanc_context_s *ctx, struct klvanc_packet_scte_104_
 			PRINT_DEBUG_MEMBER_INT(d->event_cancel_indicator);
 			PRINT_DEBUG_MEMBER_INT(d->duration);
 			PRINT_DEBUG("    duration = %d (seconds)\n", d->duration);
-			PRINT_DEBUG_MEMBER_INT(d->upid_type);
 			PRINT_DEBUG(" d->upid_type = 0x%02x (%s)\n", d->upid_type, seg_upid_type(d->upid_type));
 			PRINT_DEBUG_MEMBER_INT(d->upid_length);
 			for (int j = 0; j < d->upid_length; j++) {
-				PRINT_DEBUG( "d->upid[%d] = 0x%02x (%c)\n", j, d->upid[j], isprint(d->upid[j]) ? d->upid[j] : '?');
+				PRINT_DEBUG( "  d->upid[%d] = 0x%02x (%c)\n", j, d->upid[j], isprint(d->upid[j]) ? d->upid[j] : '?');
 			}
 			PRINT_DEBUG(" d->type_id = 0x%02x (%s)\n", d->type_id, seg_type_id(d->type_id));
 			PRINT_DEBUG_MEMBER_INT(d->segment_num);
@@ -995,6 +997,11 @@ static void messageFragmentReset(struct klvanc_context_s *ctx)
 	ctx->scte104_fragment_count = 0;
 }
 
+void cleanup_SCTE_104(struct klvanc_context_s *ctx)
+{
+	messageFragmentReset(ctx);
+}
+
 static int messageFragmentContinued(struct klvanc_context_s *ctx, struct klvanc_packet_header_s *hdr)
 {
 	if (ctx->verbose)
@@ -1124,15 +1131,6 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 	pkt->following_pkt         = (pkt->payloadDescriptorByte >> 1) & 0x01;
 	pkt->duplicate_msg         = pkt->payloadDescriptorByte & 0x01;
 
-	/* We only support SCTE104 messages of type
-	 * single_operation_message() that are completely
-	 * self containined with a single VANC line, and
-	 * are not continuation messages.
-	 * Eg. payloadDescriptor value 0x08.
-	 *
-	 * Duplicate message flags are not supported.
-	 */
-
 	if (pkt->duplicate_msg) {
 		printf("%s() pkt->duplicate_msg is unsupported, parse aborted.\n", __func__);
 		free(pkt);
@@ -1208,6 +1206,7 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 		/* hdr->payload is defined as 16384 shorts */
 		pkt->payload[i] = hdr->payload[1 + i];
 	}
+	pkt->payloadLengthBytes = hdr->payloadLengthWords - 1;
 
 	struct klvanc_single_operation_message *m = &pkt->so_msg;
 	struct klvanc_multiple_operation_message *mom = &pkt->mo_msg;
@@ -1259,6 +1258,12 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 	} else
 #endif
 	if (m->opID == 0xFFFF /* Multiple Operation Message */) {
+		if (pkt->payloadLengthBytes < 10) {
+			PRINT_ERR("%s() packet too short size=%d\n", __func__, pkt->payloadLengthBytes);
+			free(pkt);
+			return -1;
+		}
+
 		mom->rsvd                    = pkt->payload[0] << 8 | pkt->payload[1];
 		mom->messageSize             = pkt->payload[2] << 8 | pkt->payload[3];
 		mom->protocol_version        = pkt->payload[4];
@@ -1266,6 +1271,12 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 		mom->message_number          = pkt->payload[6];
 		mom->DPI_PID_index           = pkt->payload[7] << 8 | pkt->payload[8];
 		mom->SCTE35_protocol_version = pkt->payload[9];
+
+		if (mom->messageSize > pkt->payloadLengthBytes) {
+			PRINT_ERR("%s() MOM packet too short MOM=%d pkt=%d\n", __func__, mom->messageSize, pkt->payloadLengthBytes);
+			free(pkt);
+			return -1;
+		}
 
 		unsigned char *p = &pkt->payload[10];
 		p = parse_mom_timestamp(ctx, p, &mom->timestamp);
@@ -1282,9 +1293,21 @@ int parse_SCTE_104(struct klvanc_context_s *ctx,
 			struct klvanc_multiple_operation_message_operation *o = &mom->ops[i];
 			o->opID = *(p + 0) << 8 | *(p + 1);
 			o->data_length = *(p + 2) << 8 | *(p + 3);
+			if ((p + o->data_length) > pkt->payload + pkt->payloadLengthBytes) {
+				PRINT_ERR("%s() Not enough data remaining to process op. op=%d len=%d\n",
+					  __func__, i, o->data_length);
+				for (int j = 0; j < i; j++)
+					free(mom->ops[j].data);
+				free(mom->ops);
+				free(pkt);
+				return -1;
+			}
 			o->data = malloc(o->data_length);
 			if (!o->data) {
 				PRINT_ERR("%s() Unable to allocate memory for mom op, error.\n", __func__);
+				for (int j = 0; j < i; j++)
+					free(mom->ops[j].data);
+				free(mom->ops);
 				free(pkt);
 				return -1;
 			} else {

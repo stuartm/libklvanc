@@ -55,10 +55,11 @@ int dump_EIA_608(struct klvanc_context_s *ctx, void *p);
 int parse_EIA_608(struct klvanc_context_s *ctx,
 		  struct klvanc_packet_header_s *hdr, void **pp);
 
-/* core-packet-eia_608.c */
+/* core-packet-scte_104.c */
 int dump_SCTE_104(struct klvanc_context_s *ctx, void *p);
 int parse_SCTE_104(struct klvanc_context_s *ctx, struct klvanc_packet_header_s *hdr,
 		   void **pp);
+void cleanup_SCTE_104(struct klvanc_context_s *ctx);
 
 /* core-packet-kl_u64le_counter.c */
 int dump_KL_U64LE_COUNTER(struct klvanc_context_s *ctx, void *p);
@@ -77,6 +78,11 @@ int parse_SDP(struct klvanc_context_s *ctx,
 int dump_SMPTE_12_2(struct klvanc_context_s *ctx, void *p);
 int parse_SMPTE_12_2(struct klvanc_context_s *ctx, struct klvanc_packet_header_s *hdr,
 		     void **pp);
+
+/* core-packet-smpte_2108_1.c */
+int dump_SMPTE_2108_1(struct klvanc_context_s *ctx, void *p);
+int parse_SMPTE_2108_1(struct klvanc_context_s *ctx, struct klvanc_packet_header_s *hdr,
+		       void **pp);
 
 
 /* We don't expect anything outside of the VANC framework to need toascii
